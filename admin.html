@@ -101,6 +101,24 @@
       return rows.map(r => Object.fromEntries(headers.map((h, i) => [h, (r[i] || '').trim()])));
     }
 
+
+    const COUNTRY_ALIASES = {
+      'usa': 'USA',
+      'us': 'USA',
+      'united states': 'USA',
+      'uk': 'GBR',
+      'united kingdom': 'GBR',
+      'britain': 'GBR'
+    };
+
+    function normalizeCountry(v) {
+      const raw = String(v || '').trim();
+      if (!raw) return '';
+      const lower = raw.toLowerCase();
+      if (COUNTRY_ALIASES[lower]) return COUNTRY_ALIASES[lower];
+      return raw;
+    }
+
     const alias = {
       country: ['country', 'countries'],
       journalists_count: ['journalists_count', 'Count'],
@@ -159,6 +177,7 @@
 
       const countries = {};
       records.forEach(r => {
+        const country = normalizeCountry(pick(r, 'country'));
         const country = pick(r, 'country');
         if (!country) return;
 
