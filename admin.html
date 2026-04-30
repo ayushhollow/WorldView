@@ -168,6 +168,7 @@
 
       const rawText = await file.text();
       const text = rawText.includes('\\n') ? rawText.replace(/\\n/g, '\n') : rawText;
+      const text = await file.text();
       const records = parseCSV(text);
       if (!records.length) {
         out.textContent = 'CSV is empty or malformed.';
@@ -177,6 +178,7 @@
       const countries = {};
       records.forEach(r => {
         const country = normalizeCountry(pick(r, 'country'));
+        const country = pick(r, 'country');
         if (!country) return;
 
         const journalistsCount = num(pick(r, 'journalists_count'));
