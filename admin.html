@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WorldView Admin</title>
+  <style>
+    body { font-family: Inter, Segoe UI, sans-serif; background: #0d1429; color: #eff3ff; margin: 0; padding: 24px; }
+    .card { max-width: 880px; margin: 0 auto; background: #121c36; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 16px; }
+    input, button { padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: #0a1227; color: #fff; }
+    button { cursor: pointer; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Admin Login</h2>
+
+    <div id="loginPane">
+      <input id="user" placeholder="Username" />
+      <input id="pass" type="password" placeholder="Password" />
+      <button id="loginBtn">Login</button>
+      <p id="msg" style="color:#ffb4b4"></p>
+    </div>
+
+    <div id="adminPane" class="hidden">
+      <h3>Upload CSV</h3>
+      <p>Supports: <code>countries,Count,Zero% Club,Articles/Negative,...</code> and <code>country,journalists_count,...</code></p>
+      <input id="csvFile" type="file" accept=".csv" />
+      <div class="row" style="margin-top:8px">
+        <button id="processBtn">Process & Save</button>
+        <a href="index.html"><button>Back to Map</button></a>
+      </div>
+      <pre id="out"></pre>
+    </div>
+  </div>
+
+  <script>
+    const loginPane = document.getElementById('loginPane');
+    const adminPane = document.getElementById('adminPane');
+    const userInput = document.getElementById('user');
+    const passInput = document.getElementById('pass');
+    const msg = document.getElementById('msg');
+
+    document.getElementById('loginBtn').addEventListener('click', () => {
+      const u = userInput.value.trim();
+      const p = passInput.value;
+      if (u === 'admin' && p === 'worldview2026') {
+        sessionStorage.setItem('wv_admin', '1');
+        loginPane.classList.add('hidden');
+        adminPane.classList.remove('hidden');
+        msg.textContent = '';
+      } else {
+        msg.textContent = 'Invalid login';
+      }
+    });
+
+    if (sessionStorage.getItem('wv_admin') === '1') {
+      loginPane.classList.add('hidden');
+      adminPane.classList.remove('hidden');
+    }
+
+    function parseCSV(text) {
+      const rows = [];
+      let cur = '';
+      let row = [];
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const next = text[i + 1];
+        if (ch === '"') {
+          if (inQuotes && next === '"') {
+            cur += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (ch === ',' && !inQuotes) {
+          row.push(cur);
+          cur = '';
+        } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+          if (ch === '\r' && next === '\n') i++;
+          row.push(cur);
+          if (row.some(x => x.trim() !== '')) rows.push(row);
+          row = [];
+          cur = '';
+        } else {
+          cur += ch;
+        }
+      }
+
+      if (cur || row.length) {
+        row.push(cur);
+        rows.push(row);
+      }
+
+      if (!rows.length) return [];
+      const headers = rows.shift().map(h => h.trim());
+      return rows.map(r => Object.fromEntries(headers.map((h, i) => [h, (r[i] || '').trim()])));
+    }
+
+
+    const COUNTRY_ALIASES = {
+      'usa': 'USA',
+      'us': 'USA',
+      'united states': 'USA',
+      'uk': 'GBR',
+      'united kingdom': 'GBR',
+      'britain': 'GBR'
+    };
+
+    function normalizeCountry(v) {
+      const raw = String(v || '').trim();
+      if (!raw) return '';
+      const lower = raw.toLowerCase();
+      if (COUNTRY_ALIASES[lower]) return COUNTRY_ALIASES[lower];
+      return raw;
+    }
+
+    const alias = {
+      country: ['country', 'countries'],
+      journalists_count: ['journalists_count', 'Count'],
+      zero_percent_club: ['zero_percent_club', 'Zero% Club'],
+      articles: ['articles', 'Articles', 'Articles/Negative'],
+      negative_articles: ['negative_articles', 'Negative', 'Articles/Negative'],
+      journalist_name: ['journalist_name', 'Journalist Name'],
+      journalist_photo: ['journalist_photo', 'Photo'],
+      biases: ['biases', 'Biases (per Kutniti)'],
+      owner_name: ['owner_name', 'Owner Name (Highest Shareholder)'],
+      owner_photo: ['owner_photo', 'Owner Photo'],
+      owner_organization: ['owner_organization', 'Organization']
+    };
+
+    const pick = (row, key) => {
+      for (const h of alias[key]) {
+        if (row[h] !== undefined && row[h] !== '') return row[h];
+      }
+      return '';
+    };
+
+    const num = value => {
+      const m = String(value || '').match(/\d+/);
+      return m ? Number(m[0]) : 0;
+    };
+
+    function parseArticlesAndNegative(v) {
+      const s = String(v || '').toLowerCase();
+      const nums = [...s.matchAll(/\d+/g)].map(m => Number(m[0]));
+      if (s.includes('articles') && nums.length >= 1) {
+        const articles = nums[0];
+        let negative = 0;
+        if (s.includes('0 pos')) negative = articles;
+        else if (nums.length >= 2) negative = nums[1];
+        return { articles, negative };
+      }
+      return { articles: num(v), negative: 0 };
+    }
+
+    document.getElementById('processBtn').addEventListener('click', async () => {
+      const file = document.getElementById('csvFile').files[0];
+      const out = document.getElementById('out');
+      if (!file) {
+        out.textContent = 'Choose a CSV file.';
+        return;
+      }
+
+      const rawText = await file.text();
+      const text = rawText.includes('\\n') ? rawText.replace(/\\n/g, '\n') : rawText;
+      const records = parseCSV(text);
+      if (!records.length) {
+        out.textContent = 'CSV is empty or malformed.';
+        return;
+      }
+
+      const countries = {};
+      records.forEach(r => {
+        const country = normalizeCountry(pick(r, 'country'));
+        if (!country) return;
+
+        const journalistsCount = num(pick(r, 'journalists_count'));
+        const zeroRaw = pick(r, 'zero_percent_club');
+        const zero = /^yes|true|1$/i.test(zeroRaw) ? journalistsCount : num(zeroRaw);
+        const mixed = pick(r, 'articles');
+        const parsed = pick(r, 'negative_articles')
+          ? { articles: num(pick(r, 'articles')), negative: num(pick(r, 'negative_articles')) }
+          : parseArticlesAndNegative(mixed);
+
+        if (!countries[country]) {
+          countries[country] = {
+            journalists_count: journalistsCount,
+            zero_percent_club: zero,
+            articles: parsed.articles,
+            negative_articles: parsed.negative,
+            journalists: []
+          };
+        }
+
+        countries[country].journalists.push({
+          name: pick(r, 'journalist_name'),
+          photo: pick(r, 'journalist_photo'),
+          biases: pick(r, 'biases'),
+          owner_name: pick(r, 'owner_name'),
+          owner_photo: pick(r, 'owner_photo'),
+          owner_organization: pick(r, 'owner_organization')
+        });
+      });
+
+      localStorage.setItem('worldview_data', JSON.stringify({ countries }));
+      out.textContent = `Saved ${Object.keys(countries).length} countries. Reload map page.`;
+    });
+  </script>
+</body>
+</html>
