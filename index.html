@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WorldView Heatmap</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    body { font-family: Inter, Segoe UI, sans-serif; }
+    .topbar { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1000; display: flex; justify-content: space-between; gap: 10px; }
+    .panel { background: rgba(8,12,28,.88); color: #f2f6ff; border: 1px solid rgba(255,255,255,.25); border-radius: 12px; padding: 10px 12px; max-width: 75%; }
+    .panel h3 { margin: 0 0 4px; font-size: 1rem; }
+    .panel p { margin: 0; color: #ccdaff; font-size: .9rem; }
+    .admin-btn { background: linear-gradient(120deg,#ffa94d,#ff5d8f); color: #19080f; border: 0; border-radius: 10px; padding: 10px 12px; font-weight: 700; text-decoration: none; height: fit-content; }
+    .card { position: absolute; bottom: 14px; left: 14px; z-index: 1000; max-width: 430px; max-height: 44vh; overflow: auto; background: rgba(8,12,28,.92); color: #eff4ff; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 12px; display: none; }
+    .person { display: grid; grid-template-columns: 56px 1fr; gap: 8px; margin: 8px 0; padding: 8px; border: 1px solid rgba(255,255,255,.18); border-radius: 8px; }
+    .person img { width: 56px; height: 56px; object-fit: cover; border-radius: 50%; }
+    .small { font-size: .82rem; color: #c3d0f4; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="topbar">
+    <div class="panel" id="hoverInfo">
+      <h3>Hover a country</h3>
+      <p>Upload CSV via Admin Access to paint the heatmap.</p>
+    </div>
+    <a href="admin.html" class="admin-btn">Admin Access</a>
+  </div>
+  <div id="details" class="card"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    const WORLD_BOUNDS = [[-85, -180], [85, 180]];
+    const map = L.map('map', {
+      worldCopyJump: false,
+      minZoom: 2,
+      maxZoom: 8,
+      zoomSnap: 0.5,
+      maxBounds: WORLD_BOUNDS,
+      maxBoundsViscosity: 1
+    }).setView([20, 8], 2);
+
+    map.setMaxBounds(WORLD_BOUNDS);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd',
+      minZoom: 2,
+      maxZoom: 19,
+      noWrap: true,
+      bounds: WORLD_BOUNDS,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }).addTo(map);
+
+    const hoverInfo = document.getElementById('hoverInfo');
+    const details = document.getElementById('details');
+    const appData = JSON.parse(localStorage.getItem('worldview_data') || '{}');
+    const countryData = appData.countries || {};
+
+    function getColor(ratio) {
+      if (ratio == null || Number.isNaN(ratio)) return '#5c668f';
+      if (ratio >= 0.8) return '#ff2d55';
+      if (ratio >= 0.6) return '#ff7a45';
+      if (ratio >= 0.4) return '#ffd166';
+      if (ratio >= 0.2) return '#7ee081';
+      return '#43d9bd';
+    }
+
+    fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+      .then(r => r.json())
+      .then(geo => {
+        const layer = L.geoJSON(geo, {
+          style: feature => {
+            const name = feature.properties.ADMIN;
+            const d = countryData[name] || countryData[feature.properties.ISO_A3] || null;
+            const ratio = d ? Number(d.negative_articles || 0) / Math.max(Number(d.articles || 0), 1) : null;
+            return { color: '#d7e4ff', weight: 1, fillColor: getColor(ratio), fillOpacity: d ? 0.65 : 0.18 };
+          },
+          onEachFeature: (feature, l) => {
+            const name = feature.properties.ADMIN;
+            const d = countryData[name] || countryData[feature.properties.ISO_A3] || null;
+
+            l.on('mouseover', () => {
+              l.setStyle({ weight: 2 });
+              if (!d) {
+                hoverInfo.innerHTML = `<h3>${name}</h3><p>No CSV data loaded for this country.</p>`;
+                return;
+              }
+              const ratio = Number(d.negative_articles || 0) / Math.max(Number(d.articles || 0), 1);
+              hoverInfo.innerHTML = `<h3>${name}</h3><p>Journalists: ${d.journalists_count} • 0% Club: ${d.zero_percent_club} • Articles: ${d.articles} • Negative: ${d.negative_articles} • Negative ratio: ${(ratio * 100).toFixed(1)}%</p>`;
+            });
+
+            l.on('mouseout', () => layer.resetStyle(l));
+
+            l.on('click', () => {
+              if (!d) {
+                details.style.display = 'none';
+                return;
+              }
+              details.style.display = 'block';
+              const people = (d.journalists || []).map(j => `
+                <div class='person'>
+                  <img src='${j.photo || "https://via.placeholder.com/56"}' alt='${j.name || "journalist"}' />
+                  <div>
+                    <b>${j.name || "Unknown"}</b>
+                    <div class='small'>Biases: ${j.biases || "N/A"}</div>
+                    <details>
+                      <summary>Owner details</summary>
+                      <div class='small'>Owner: ${j.owner_name || "N/A"}</div>
+                      <div class='small'>Organization: ${j.owner_organization || "N/A"}</div>
+                      ${j.owner_photo ? `<img src='${j.owner_photo}' alt='owner' style='width:56px;height:56px;border-radius:50%;margin-top:6px'/>` : ''}
+                    </details>
+                  </div>
+                </div>`).join('');
+              details.innerHTML = `<h3 style='margin:0 0 8px'>${name} journalists</h3>${people || '<p>No journalist rows.</p>'}`;
+            });
+          }
+        }).addTo(map);
+      })
+      .catch(() => {
+        hoverInfo.innerHTML = '<h3>Data load failed</h3><p>Unable to load country boundaries.</p>';
+      });
+  </script>
+</body>
+</html>
