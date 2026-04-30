@@ -3,254 +3,226 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WorldView Interactive Map</title>
+    <title>WorldView - Fullscreen Country Explorer</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
     <style>
-      :root {
-        color-scheme: dark;
-        --bg: radial-gradient(circle at top, #1f2a54 0%, #0c1023 45%, #090b14 100%);
-        --card: rgba(255, 255, 255, 0.1);
-        --stroke: rgba(255, 255, 255, 0.35);
-        --text: #f8f9ff;
-        --muted: #cad2ff;
+      html, body { margin: 0; height: 100%; font-family: Inter, Segoe UI, Roboto, sans-serif; }
+      #app { height: 100%; width: 100%; position: relative; }
+      #map { height: 100%; width: 100%; }
+
+      .top-popup {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(900px, calc(100% - 24px));
+        z-index: 900;
+        background: rgba(10, 14, 28, 0.86);
+        color: #f7f9ff;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 14px;
+        padding: 12px 14px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+      }
+      .top-popup h2 { margin: 0 0 4px; font-size: 1.1rem; }
+      .top-popup p { margin: 0; color: #d0d9ff; font-size: 0.92rem; }
+      .top-actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; }
+      .top-actions button {
+        background: linear-gradient(120deg, #43b8ff, #53ffd5);
+        border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer;
       }
 
-      * {
-        box-sizing: border-box;
+      .auth-modal, .tool-modal {
+        position: fixed; inset: 0; z-index: 1200; display: none; place-items: center;
+        background: rgba(0,0,0,.55);
       }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        font-family: Inter, "Segoe UI", Roboto, sans-serif;
-        background: var(--bg);
-        color: var(--text);
+      .modal-card {
+        width: min(720px, calc(100% - 24px));
+        max-height: 88vh;
+        overflow: auto;
+        background: #0e1730;
+        color: #f3f6ff;
+        border: 1px solid rgba(255,255,255,.2);
+        border-radius: 16px;
+        padding: 14px;
       }
-
-      .page {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2rem 1rem 3rem;
+      .modal-card input, .modal-card textarea, .modal-card select {
+        width: 100%; margin-top: 6px; margin-bottom: 10px; border-radius: 8px;
+        border: 1px solid rgba(255,255,255,.25); background: #0a1227; color: #fff; padding: 8px;
       }
-
-      h1 {
-        font-size: clamp(1.8rem, 3vw, 2.5rem);
-        margin-bottom: 0.35rem;
-      }
-
-      .subtitle {
-        color: var(--muted);
-        margin-top: 0;
-      }
-
-      .layout {
-        display: grid;
-        gap: 1.2rem;
-        grid-template-columns: minmax(300px, 2fr) minmax(280px, 1fr);
-      }
-
-      .panel {
-        background: var(--card);
-        border: 1px solid var(--stroke);
-        border-radius: 18px;
-        padding: 1rem;
-        backdrop-filter: blur(12px);
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
-      }
-
-      #map {
-        width: 100%;
-        height: auto;
-      }
-
-      .region {
-        stroke: rgba(255, 255, 255, 0.55);
-        stroke-width: 1.5;
-        cursor: pointer;
-        transition: transform 150ms ease, filter 150ms ease, stroke-width 150ms ease;
-      }
-
-      .region:hover,
-      .region:focus-visible {
-        transform: translateY(-2px);
-        filter: brightness(1.15);
-        stroke-width: 2.2;
-        outline: none;
-      }
-
-      .controls {
-        display: flex;
-        align-items: center;
-        gap: 0.8rem;
-        margin: 0.4rem 0 1rem;
-      }
-
-      input[type="color"] {
-        inline-size: 60px;
-        block-size: 40px;
-        border: none;
-        border-radius: 10px;
-        background: transparent;
-        cursor: pointer;
-      }
-
-      #infoTitle {
-        margin-top: 0;
-      }
-
-      #infoText {
-        color: var(--muted);
-      }
-
-      .gallery {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: grid;
-        gap: 0.8rem;
-      }
-
-      .gallery li {
-        display: grid;
-        grid-template-columns: 96px 1fr;
-        gap: 0.75rem;
-        align-items: center;
-        padding: 0.5rem;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 12px;
-      }
-
-      .gallery img {
-        width: 96px;
-        height: 72px;
-        object-fit: cover;
-        border-radius: 10px;
-      }
-
-      .gallery p {
-        margin: 0;
-        font-size: 0.9rem;
-      }
-
-      @media (max-width: 920px) {
-        .layout {
-          grid-template-columns: 1fr;
-        }
-      }
+      .modal-card textarea { min-height: 180px; resize: vertical; font-family: ui-monospace, monospace; }
+      .modal-card .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .hidden { display: none !important; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid rgba(255,255,255,.2); padding: 6px; font-size: .88rem; }
+      .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .btn-row button { border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+      .primary { background: #61e5ff; color: #00141d; font-weight: 700; }
+      .ghost { background: #223154; color: #f0f4ff; }
     </style>
   </head>
   <body>
-    <main class="page">
-      <h1>WorldView Explorer</h1>
-      <p class="subtitle">Paint each region and hover to reveal picture highlights + quick facts.</p>
+    <div id="app">
+      <div id="map"></div>
 
-      <section class="layout">
-        <div class="panel">
-          <label class="controls">
-            <span>Choose a paint color:</span>
-            <input type="color" id="paintColor" value="#55e3ff" aria-label="Choose region color" />
-          </label>
-
-          <svg id="map" viewBox="0 0 900 460" aria-label="Interactive world regions map">
-            <path id="north-america" tabindex="0" class="region" fill="#5873ff" d="M75,122 L180,86 L250,95 L300,120 L275,168 L210,180 L175,220 L120,210 L88,170 Z" />
-            <path id="south-america" tabindex="0" class="region" fill="#ff7c9b" d="M210,235 L265,245 L300,290 L278,360 L238,410 L190,340 L180,285 Z" />
-            <path id="europe" tabindex="0" class="region" fill="#65d7ab" d="M390,110 L450,98 L510,120 L488,156 L436,170 L396,145 Z" />
-            <path id="africa" tabindex="0" class="region" fill="#ffd166" d="M410,184 L488,185 L538,250 L520,365 L438,380 L392,300 Z" />
-            <path id="asia" tabindex="0" class="region" fill="#a78bfa" d="M525,100 L700,90 L800,140 L818,220 L730,250 L630,230 L560,180 Z" />
-            <path id="oceania" tabindex="0" class="region" fill="#00c2ff" d="M690,300 L785,292 L840,340 L805,392 L705,385 L672,336 Z" />
-          </svg>
+      <div class="top-popup" id="infoBar">
+        <h2>Hover over any country</h2>
+        <p>Move your cursor over the full-screen world map to see country-level details here.</p>
+        <div class="top-actions">
+          <button id="openLogin">Special Access</button>
+          <small style="color:#d0d9ff;">Special tools are available only after login.</small>
         </div>
+      </div>
+    </div>
 
-        <aside class="panel" aria-live="polite">
-          <h2 id="infoTitle">Hover a region</h2>
-          <p id="infoText">You will see a short description and a mini gallery here.</p>
-          <ul id="gallery" class="gallery"></ul>
-        </aside>
-      </section>
-    </main>
+    <div class="auth-modal" id="authModal">
+      <div class="modal-card">
+        <h3>Special Access Login</h3>
+        <p style="color:#c6d3ff;">Login required to open the input-to-table tool.</p>
+        <label>Username<input id="username" placeholder="admin" /></label>
+        <label>Password<input id="password" type="password" placeholder="••••••" /></label>
+        <div class="btn-row">
+          <button class="primary" id="loginBtn">Login</button>
+          <button class="ghost" id="closeAuth">Cancel</button>
+        </div>
+        <p id="authMsg" style="color:#ffb3b3"></p>
+      </div>
+    </div>
 
+    <div class="tool-modal" id="toolModal">
+      <div class="modal-card">
+        <h3>Special Tool: Text → Table</h3>
+        <textarea id="rawInput">Name: Alice, Age: 29, City: Seattle, Score: 88
+Name: Bob, Age: 24, City: Austin, Score: 92</textarea>
+        <div class="row">
+          <label>Sort by<select id="sortColumn"></select></label>
+          <label>Order<select id="sortOrder"><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+        </div>
+        <div class="btn-row">
+          <button class="primary" id="buildBtn">Build Table</button>
+          <button class="ghost" id="sortBtn">Sort</button>
+          <button class="ghost" id="csvBtn">Download CSV</button>
+          <button class="ghost" id="closeTool">Close</button>
+        </div>
+        <div id="tableWrap" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
-      const data = {
-        "north-america": {
-          name: "North America",
-          info: "A mix of snowy peaks, large cities, and iconic national parks.",
-          images: [
-            { src: "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=600&q=80", caption: "Canadian Rockies" },
-            { src: "https://images.unsplash.com/photo-1491553895911-0055eca6402d?auto=format&fit=crop&w=600&q=80", caption: "City lights in the U.S." }
-          ]
-        },
-        "south-america": {
-          name: "South America",
-          info: "Rainforests, dramatic coasts, and vibrant cultural festivals.",
-          images: [
-            { src: "https://images.unsplash.com/photo-1505764706515-aa95265c5abc?auto=format&fit=crop&w=600&q=80", caption: "Andes mountain landscape" },
-            { src: "https://images.unsplash.com/photo-1544989164-31b3d1f4f383?auto=format&fit=crop&w=600&q=80", caption: "Colorful neighborhood streets" }
-          ]
-        },
-        europe: {
-          name: "Europe",
-          info: "Historic architecture, world museums, and storybook towns.",
-          images: [
-            { src: "https://images.unsplash.com/photo-1471623320832-752e8bbf8413?auto=format&fit=crop&w=600&q=80", caption: "Old town skyline" },
-            { src: "https://images.unsplash.com/photo-1431274172761-fca41d930114?auto=format&fit=crop&w=600&q=80", caption: "Alpine railway views" }
-          ]
-        },
-        africa: {
-          name: "Africa",
-          info: "Expansive savannas, deserts, and rich biodiversity.",
-          images: [
-            { src: "https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&w=600&q=80", caption: "Safari sunset" },
-            { src: "https://images.unsplash.com/photo-1547471080-7cc2caa01a7e?auto=format&fit=crop&w=600&q=80", caption: "Dune adventure" }
-          ]
-        },
-        asia: {
-          name: "Asia",
-          info: "Ancient traditions alongside cutting-edge megacities.",
-          images: [
-            { src: "https://images.unsplash.com/photo-1480796927426-f609979314bd?auto=format&fit=crop&w=600&q=80", caption: "Temple landscape" },
-            { src: "https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&w=600&q=80", caption: "Modern skyline at dusk" }
-          ]
-        },
-        oceania: {
-          name: "Oceania",
-          info: "Coral reefs, island ecosystems, and coastal city life.",
-          images: [
-            { src: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80", caption: "Turquoise island waters" },
-            { src: "https://images.unsplash.com/photo-1506973035872-a4ec16b8d6ad?auto=format&fit=crop&w=600&q=80", caption: "Harbor evening" }
-          ]
+      const infoBar = document.getElementById('infoBar');
+      const map = L.map('map', { worldCopyJump: true, zoomControl: true }).setView([20, 8], 2);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      function setInfo(title, text) {
+        infoBar.querySelector('h2').textContent = title;
+        infoBar.querySelector('p').textContent = text;
+      }
+
+      fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+        .then(res => res.json())
+        .then(geo => {
+          const layer = L.geoJSON(geo, {
+            style: {
+              color: '#6ed8ff',
+              weight: 1,
+              fillColor: '#4b67ff',
+              fillOpacity: 0.22
+            },
+            onEachFeature: (feature, l) => {
+              const name = feature.properties.ADMIN || feature.properties.name || 'Unknown';
+              const iso = feature.properties.ISO_A3 || 'N/A';
+              const region = feature.properties.REGION_UN || 'Unknown region';
+
+              l.on('mouseover', () => {
+                l.setStyle({ weight: 2.2, fillOpacity: 0.4, color: '#b8f1ff' });
+                setInfo(name, `ISO: ${iso} • Region: ${region}. Click country for a pinned popup.`);
+              });
+              l.on('mouseout', () => {
+                layer.resetStyle(l);
+              });
+              l.on('click', (e) => {
+                L.popup({ offset: [0, -8] })
+                  .setLatLng(e.latlng)
+                  .setContent(`<b>${name}</b><br/>ISO: ${iso}<br/>Region: ${region}`)
+                  .openOn(map);
+              });
+            }
+          }).addTo(map);
+        })
+        .catch(() => setInfo('Map data failed to load', 'Could not load detailed country boundaries. Check internet connection.'));
+
+      const authModal = document.getElementById('authModal');
+      const toolModal = document.getElementById('toolModal');
+      document.getElementById('openLogin').onclick = () => authModal.style.display = 'grid';
+      document.getElementById('closeAuth').onclick = () => authModal.style.display = 'none';
+      document.getElementById('closeTool').onclick = () => toolModal.style.display = 'none';
+
+      document.getElementById('loginBtn').onclick = () => {
+        const user = document.getElementById('username').value.trim();
+        const pass = document.getElementById('password').value;
+        const authMsg = document.getElementById('authMsg');
+
+        if (user === 'admin' && pass === 'worldview2026') {
+          authModal.style.display = 'none';
+          toolModal.style.display = 'grid';
+          authMsg.textContent = '';
+        } else {
+          authMsg.textContent = 'Invalid credentials. Try admin / worldview2026';
         }
       };
 
-      const colorPicker = document.getElementById("paintColor");
-      const infoTitle = document.getElementById("infoTitle");
-      const infoText = document.getElementById("infoText");
-      const gallery = document.getElementById("gallery");
-      const regions = document.querySelectorAll(".region");
+      const rawInput = document.getElementById('rawInput');
+      const buildBtn = document.getElementById('buildBtn');
+      const sortBtn = document.getElementById('sortBtn');
+      const sortColumn = document.getElementById('sortColumn');
+      const sortOrder = document.getElementById('sortOrder');
+      const tableWrap = document.getElementById('tableWrap');
+      const csvBtn = document.getElementById('csvBtn');
+      let parsedRows = []; let columns = [];
 
-      function renderDetails(regionId) {
-        const details = data[regionId];
-        if (!details) return;
-
-        infoTitle.textContent = details.name;
-        infoText.textContent = details.info;
-        gallery.innerHTML = details.images
-          .map(
-            (item) => `
-              <li>
-                <img src="${item.src}" alt="${item.caption}" loading="lazy" />
-                <p>${item.caption}</p>
-              </li>`
-          )
-          .join("");
+      const smartSplit = (line) => line.includes('|') ? line.split('|').map(v => v.trim()) : line.includes('\t') ? line.split('\t').map(v => v.trim()) : line.includes(';') ? line.split(';').map(v => v.trim()) : line.includes(',') ? line.split(',').map(v => v.trim()) : [line.trim()];
+      function parseLine(line) {
+        const kv = line.match(/([^,:;|\t]+)\s*:\s*([^,;|]+)/g);
+        if (kv && kv.length >= 2) {
+          const obj = {}; kv.forEach(p => { const [k, ...r] = p.split(':'); obj[k.trim()] = r.join(':').trim(); }); return obj;
+        }
+        const cells = smartSplit(line); if (cells.length > 1) { const o = {}; cells.forEach((c,i) => o[`Column ${i+1}`] = c); return o; }
+        return { Text: line.trim() };
       }
-
-      regions.forEach((region) => {
-        region.addEventListener("mouseenter", () => renderDetails(region.id));
-        region.addEventListener("focus", () => renderDetails(region.id));
-        region.addEventListener("click", () => {
-          region.setAttribute("fill", colorPicker.value);
-          renderDetails(region.id);
-        });
-      });
+      const inferType = (v) => Number.isFinite(Number(v)) ? 'number' : 'string';
+      function renderTable(rows, cols) {
+        tableWrap.innerHTML = `<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${r[c]??''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      }
+      function buildTable() {
+        const lines = rawInput.value.split('\n').map(l=>l.trim()).filter(Boolean);
+        parsedRows = lines.map(parseLine);
+        columns = [...new Set(parsedRows.flatMap(r=>Object.keys(r)))];
+        sortColumn.innerHTML = columns.map(c => `<option value="${c}">${c}</option>`).join('');
+        renderTable(parsedRows, columns);
+      }
+      function sortRows() {
+        const col = sortColumn.value; const ord = sortOrder.value; const sample = parsedRows.find(r=>r[col]!=null)?.[col] ?? ''; const type = inferType(sample);
+        const sorted = [...parsedRows].sort((a,b)=> type==='number' ? Number(a[col]??0)-Number(b[col]??0) : String(a[col]??'').localeCompare(String(b[col]??'')));
+        parsedRows = ord==='desc' ? sorted.reverse() : sorted; renderTable(parsedRows, columns);
+      }
+      function downloadCSV() {
+        const esc = (s)=>`"${String(s??'').replaceAll('"','""')}"`;
+        const csv = [columns.map(esc).join(',')].concat(parsedRows.map(r=>columns.map(c=>esc(r[c])).join(','))).join('\n');
+        const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'special-table.csv'; a.click(); URL.revokeObjectURL(a.href);
+      }
+      buildBtn.onclick = buildTable; sortBtn.onclick = sortRows; csvBtn.onclick = downloadCSV; buildTable();
     </script>
   </body>
 </html>
