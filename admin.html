@@ -150,6 +150,7 @@
 
       const rawText = await file.text();
       const text = rawText.includes('\\n') ? rawText.replace(/\\n/g, '\n') : rawText;
+      const text = await file.text();
       const records = parseCSV(text);
       if (!records.length) {
         out.textContent = 'CSV is empty or malformed.';
