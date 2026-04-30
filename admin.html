@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>WorldView Admin</title>
+<style>body{font-family:Inter,Segoe UI,sans-serif;background:#0d1429;color:#eff3ff;margin:0;padding:24px}.card{max-width:780px;margin:0 auto;background:#121c36;border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:16px}input,button{padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:#0a1227;color:#fff}button{cursor:pointer}.row{display:flex;gap:8px;flex-wrap:wrap}.hidden{display:none}</style></head>
+<body><div class='card'>
+<h2>Admin Login</h2>
+<div id='loginPane'>
+<input id='user' placeholder='Username'/>
+<input id='pass' type='password' placeholder='Password'/>
+<button id='loginBtn'>Login</button>
+<p id='msg' style='color:#ffb4b4'></p>
+</div>
+<div id='adminPane' class='hidden'>
+<h3>Upload CSV</h3>
+<p>Required columns: <code>country,journalists_count,zero_percent_club,articles,negative_articles,journalist_name,journalist_photo,biases,owner_name,owner_photo,owner_organization</code></p>
+<input id='csvFile' type='file' accept='.csv'/>
+<div class='row' style='margin-top:8px'><button id='processBtn'>Process & Save</button><a href='index.html'><button>Back to Map</button></a></div>
+<pre id='out'></pre>
+</div></div>
+<script>
+const loginPane=document.getElementById('loginPane'),adminPane=document.getElementById('adminPane');
+document.getElementById('loginBtn').onclick=()=>{const u=user.value.trim(),p=pass.value; if(u==='admin'&&p==='worldview2026'){sessionStorage.setItem('wv_admin','1');loginPane.classList.add('hidden');adminPane.classList.remove('hidden');msg.textContent='';}else msg.textContent='Invalid login';};
+if(sessionStorage.getItem('wv_admin')==='1'){loginPane.classList.add('hidden');adminPane.classList.remove('hidden');}
+
+function parseCSV(text){const rows=[];let cur='',row=[],q=false;for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1];if(c==='"'){if(q&&n==='"'){cur+='"';i++;}else q=!q;}else if(c===','&&!q){row.push(cur);cur='';}else if((c==='\n'||c==='\r')&&!q){if(c==='\r'&&n==='\n')i++;row.push(cur);if(row.some(x=>x.trim()!==''))rows.push(row);row=[];cur='';}else cur+=c;}if(cur||row.length){row.push(cur);rows.push(row);}const headers=rows.shift().map(h=>h.trim());return rows.map(r=>Object.fromEntries(headers.map((h,i)=>[h,(r[i]||'').trim()])));}
+
+document.getElementById('processBtn').onclick=async()=>{const f=csvFile.files[0]; if(!f){out.textContent='Choose a CSV file.';return;} const txt=await f.text(); const recs=parseCSV(txt); const countries={};
+recs.forEach(r=>{const key=r.country; if(!key) return; if(!countries[key]) countries[key]={journalists_count:Number(r.journalists_count||0),zero_percent_club:Number(r.zero_percent_club||0),articles:Number(r.articles||0),negative_articles:Number(r.negative_articles||0),journalists:[]}; countries[key].journalists.push({name:r.journalist_name,photo:r.journalist_photo,biases:r.biases,owner_name:r.owner_name,owner_photo:r.owner_photo,owner_organization:r.owner_organization});});
+localStorage.setItem('worldview_data',JSON.stringify({countries})); out.textContent=`Saved ${Object.keys(countries).length} countries to local storage. Open map to view heatmap.`;};
+</script></body></html>
